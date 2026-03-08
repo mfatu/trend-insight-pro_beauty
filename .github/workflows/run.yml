@@ -1,0 +1,21 @@
+name: Daily Trend Analysis
+on:
+  schedule:
+    - cron: '0 0 * * *' # 日本時間 朝9時
+  workflow_dispatch:
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp_key.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create Key File
+        run: echo '${{ secrets.GCP_SA_KEY }}' > gcp_key.json
+      - name: Install
+        run: pip install pytrends google-cloud-bigquery google-generativeai requests
+      - name: Execute
+        run: python main.py
+        env:
+          GENAI_API_KEY: ${{ secrets.GENAI_API_KEY }}
+          RAKUTEN_APP_ID: ${{ secrets.RAKUTEN_APP_ID }}
