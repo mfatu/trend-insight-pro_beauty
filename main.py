@@ -110,7 +110,7 @@ def main():
     # E. BigQueryへ保存
     if rows_for_bq:
         # プロジェクトID、データセット名、テーブル名を環境に合わせて書き換えてください
-        table_id = "your-project-id.beauty_trends.daily_logs"
+        table_id = "trend-insight-pro.beauty_trends.daily_log"
         errors = bq_client.insert_rows_json(table_id, rows_for_bq)
         if errors == []:
             print(f"✅ {len(rows_for_bq)}件のデータをBigQueryに保存しました。")
