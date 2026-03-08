@@ -1,21 +1,36 @@
-name: Daily Trend Analysis
+name: Daily Beauty Trend Analysis
 on:
   schedule:
-    - cron: '0 0 * * *' # 日本時間 朝9時
-  workflow_dispatch:
+    - cron: '0 0 * * *' # 日本時間 朝9時（UTC 0時）
+  workflow_dispatch: # 手動実行用ボタンを表示
+
 jobs:
-  run:
+  analyze-and-store:
     runs-on: ubuntu-latest
+    
+    # サービスアカウント鍵ファイルを一時的に作成するための環境変数
     env:
       GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp_key.json
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Create Key File
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Create GCP Key File
         run: echo '${{ secrets.GCP_SA_KEY }}' > gcp_key.json
-      - name: Install
-        run: pip install pytrends google-cloud-bigquery google-generativeai requests
-      - name: Execute
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytrends google-cloud-bigquery openai requests
+
+      - name: Run Analysis
         run: python main.py
         env:
-          GENAI_API_KEY: ${{ secrets.GENAI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           RAKUTEN_APP_ID: ${{ secrets.RAKUTEN_APP_ID }}
