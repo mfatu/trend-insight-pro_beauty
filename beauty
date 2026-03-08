@@ -1,0 +1,84 @@
+import os
+import json
+import datetime
+import requests
+from pytrends.request import TrendReq
+from google.cloud import bigquery
+from openai import OpenAI  # OpenAIライブラリに変更
+
+# --- 1. 初期設定 ---
+def init_clients():
+    # OpenAIクライアントの初期化
+    client_ai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    # BigQueryクライアントの初期化
+    client_bq = bigquery.Client()
+    return client_bq, client_ai
+
+# --- 2. 楽天API連携 ---
+def get_rakuten_items(keyword):
+    app_id = os.getenv("RAKUTEN_APP_ID")
+    if not app_id: return []
+    try:
+        url = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601"
+        res = requests.get(url, params={"applicationId": app_id, "keyword": keyword, "hits": 2, "format": "json"}, timeout=10)
+        items = res.json().get("Items", [])
+        return [{"name": i["Item"]["itemName"][:30], "url": i["Item"]["itemUrl"]} for i in items]
+    except: return []
+
+# --- 3. 実行メイン ---
+def main():
+    bq_client, ai_client = init_clients()
+    pytrends = TrendReq(hl='ja-JP', tz=360)
+    
+    # トレンド取得（美容カテゴリ）
+    pytrends.build_payload(['美容'], cat=44, timeframe='now 1-d')
+    rising = pytrends.related_queries()['美容']['rising']
+    keywords = rising['query'].tolist()[:5] if rising is not None else []
+
+    rows = []
+    today = datetime.date.today().isoformat()
+
+    for kw in keywords:
+        items = get_rakuten_items(kw)
+        
+        # ChatGPTによる分析（40代美容特化）
+        prompt = f"""
+        美容トレンドキーワード「{kw}」を40代女性向けのマーケティング視点で分析してください。
+        以下のJSON形式のみで出力してください。
+        {{
+            "score": 0から30の数値,
+            "insight": "40代女性の悩みと結びつけた深い洞察（50文字以内）"
+        }}
+        """
+        
+        response = ai_client.chat.completions.create(
+            model="gpt-4o-mini", # または "gpt-4o"
+            messages=[{"role": "user", "content": prompt}],
+            response_format={ "type": "json_object" } # JSONモードを強制
+        )
+        
+        analysis = json.loads(response.choices[0].message.content)
+        
+        rows.append({
+            "date": today,
+            "keyword": kw,
+            "surge_score": 2.0, # トレンド急上昇中であることを示す固定値（ロジック追加も可能）
+            "ai_score": analysis.get("score", 0),
+            "insight_report": json.dumps({
+                "insight": analysis.get("insight", ""),
+                "items": items
+            }, ensure_ascii=False)
+        })
+
+    # BigQueryに保存
+    if rows:
+        # プロジェクトIDとデータセット名を自身のものに書き換えてください
+        table_id = "your-project-id.beauty_trends.daily_logs"
+        errors = bq_client.insert_rows_json(table_id, rows)
+        if errors == []:
+            print(f"✅ {len(rows)}件のデータをBigQueryに保存しました。")
+        else:
+            print(f"❌ BigQuery保存エラー: {errors}")
+
+if __name__ == "__main__":
+    main()
